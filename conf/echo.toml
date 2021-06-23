@@ -1,0 +1,14 @@
+# token from account where bot should be listening for message
+client_token = ""
+
+# token from accont where messages should be posted to
+bot_token = ""
+
+# this is the channels mapping
+# should be added in this order
+# channel_id(from) = channel_id(to)
+# EXAMPLE: 
+# [mappings]
+# "23232323232323" = "2323323233223323"
+
+[mappings]

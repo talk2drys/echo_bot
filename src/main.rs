@@ -2,7 +2,6 @@ use env_logger;
 use log;
 use std::path::Path;
 use serde::Deserialize;
-use serde_json::json;
 use serenity::{
     async_trait,
     client::{Client, Context, EventHandler},
@@ -10,15 +9,15 @@ use serenity::{
     model::{channel::Message, gateway::Ready, id::ChannelId},
 };
 use std::collections::HashMap;
-use std::{env, fs};
+use std::{fs, env};
 use tokio::{
     self,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::mpsc,
 };
 use toml;
 use std::sync::Arc;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct Config {
     client_token: String,
     bot_token: String,
@@ -30,15 +29,26 @@ async fn main() {
     // initialize logger
     env_logger::init();
 
-    let user_discord_token: String;
-
+    // would prefer to leave this uninitialized
+    let mut config: std::sync::Arc<Config> = Arc::new(Config::default());
+    // let user_discord_token: String;
     let config_path = Path::new("./conf/echo.toml");
-    
-    let config_string = fs::read_to_string(&config_path)
-            .expect("Config file not found");
 
-    let mut config: std::sync::Arc<Config> = std::sync::Arc::new(toml::from_str(&config_string[..])
-        .expect("error parsing config"));
+
+    match fs::read_to_string(&config_path) {
+        Ok(ref config_string) => {
+            // parse the value
+            if let Ok(conf) = toml::from_str::<Config>(&config_string) {
+                config = Arc::new(conf);
+            } else {
+                // TODO: catch invalid config errors
+                std::process::exit(-1);
+            };
+        },
+        Err(err) => {
+            println!("Error reading string:: {:?}", err);
+        },
+    };
 
     // channel for client and  bot instances to communicate
     let (tx, rx) = mpsc::channel::<BotMessage>(100);
@@ -46,16 +56,10 @@ async fn main() {
     let client_h = ClientHandler { tx };
 
     // create a client instance that would connect to discord as you the user
-    let mut self_bot = Client::builder(&config.client_token)
+    let self_bot = Client::builder(&config.client_token)
         .event_handler(client_h)
         .await
         .expect("Err creating client");
-
-    let mut channel_map = HashMap::new();
-    channel_map.insert(
-        "".to_string(),
-        "".to_string(),
-    );
 
     let client_handle = tokio::spawn(run_client(self_bot));
     let conff = config.clone();
@@ -81,15 +85,10 @@ impl EventHandler for ClientHandler {
     // all guilds and channels client is a member of.
     async fn message(&self, _ctx: Context, message: Message) {
         // check channels message is coming f
-        log::info!("Message received {}", message.content);
-        println!("{}", message.content);
-        let r = &self
-            .tx
-            .send(BotMessage {
-                channel_id: message.channel_id.0,
-                message: message.content,
-            })
-            .await;
+        // log::info!("Message received {}", message.content);
+        if let Err(err) = &self.tx.send( BotMessage{ channel_id: message.channel_id.0, message: message.content, }).await {
+            log::warn!("Error sending message {} to channel {}", err.0.message, err.0.channel_id);
+        }
     }
 
     // fires when bot is connected
